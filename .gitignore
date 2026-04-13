@@ -1,0 +1,8 @@
+.gradle/
+build/
+**/build/
+.local/
+*.iml
+.idea/
+backend/node_modules/
+backend/dist/
