@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -58,11 +60,16 @@ class MainActivity : ComponentActivity() {
 
 private enum class AppTab { CONNECT, AGENT, LEARN }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LangMasterApp(vm: LangMasterViewModel = viewModel()) {
     val isLoggedIn by vm.isLoggedIn.collectAsStateWithLifecycle()
     if (!isLoggedIn) {
-        OnboardingScreen(vm = vm)
+        OnboardingScreen(
+            authStatus = vm.authStatus.collectAsStateWithLifecycle().value,
+            onRegister = vm::registerPin,
+            onLogin = vm::loginWithPin
+        )
         return
     }
     var selectedTab by remember { mutableStateOf(AppTab.CONNECT) }
@@ -91,12 +98,16 @@ fun LangMasterApp(vm: LangMasterViewModel = viewModel()) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OnboardingScreen(vm: LangMasterViewModel) {
+private fun OnboardingScreen(
+    authStatus: String?,
+    onRegister: (String, String, String) -> Unit,
+    onLogin: (String, String) -> Unit
+) {
     var phone by remember { mutableStateOf("+91") }
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
-    val authStatus by vm.authStatus.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("LangMaster Setup") }) }) { padding ->
         Column(
@@ -110,9 +121,9 @@ private fun OnboardingScreen(vm: LangMasterViewModel) {
             TextField(value = phone, onValueChange = { phone = it }, placeholder = { Text("Phone number") })
             TextField(value = pin, onValueChange = { pin = it }, placeholder = { Text("Create 4-digit PIN") })
             TextField(value = confirmPin, onValueChange = { confirmPin = it }, placeholder = { Text("Confirm PIN") })
-            Button(onClick = { vm.registerPin(phone, pin, confirmPin) }) { Text("Register PIN") }
+            Button(onClick = { onRegister(phone, pin, confirmPin) }) { Text("Register PIN") }
             Text("Step 2: Login with mobile + PIN")
-            Button(onClick = { vm.loginWithPin(phone, pin) }) { Text("Login & Continue") }
+            Button(onClick = { onLogin(phone, pin) }) { Text("Login & Continue") }
             authStatus?.let { Text(it) }
             Text("Step 3+: Permissions, contacts sync, Google backup, and profile setup will be added next.")
         }
@@ -384,5 +395,25 @@ private fun LearningModuleCard(module: LearningModuleEntity, onComplete: () -> U
             Text(module.goal)
             Button(onClick = onComplete) { Text("Mark progress") }
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun OnboardingPreview() {
+    MaterialTheme {
+        OnboardingScreen(
+            authStatus = "Sample Status Message",
+            onRegister = { _, _, _ -> },
+            onLogin = { _, _ -> }
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun LanguageChipRowPreview() {
+    MaterialTheme {
+        LanguageChipRow(selected = "English", onSelect = {})
     }
 }

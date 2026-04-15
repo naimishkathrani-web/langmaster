@@ -1,0 +1,16 @@
+{
+  "name": "langmaster",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "npm --prefix web run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:backend\"",
+    "build:web": "npm --prefix web run build",
+    "build:backend": "npm --prefix backend run build",
+    "install:all": "npm --prefix web install && npm --prefix backend install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

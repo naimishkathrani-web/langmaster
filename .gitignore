@@ -6,3 +6,6 @@ build/
 .idea/
 backend/node_modules/
 backend/dist/
+node_modules/
+.env
+local.properties
