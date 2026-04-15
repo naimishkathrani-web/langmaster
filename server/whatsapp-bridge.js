@@ -24,90 +24,95 @@ function digits10(raw) {
 }
 
 async function startWhatsApp() {
-  if (booting) return { status: 'already_booting' };
-  if (whatsappClient) {
-    console.log('[wa-bridge] Client already exists, checking status...');
-    if (isReady) {
+  try {
+    if (booting) return { status: 'already_booting' };
+    if (whatsappClient && !isReady) {
+      console.log('[wa-bridge] Client exists but not ready, destroying...');
+      try {
+        await whatsappClient.destroy();
+      } catch {}
+      whatsappClient = null;
+    }
+    if (whatsappClient && isReady) {
       return { status: 'already_ready' };
     }
     if (initializing) {
       return { status: 'already_initializing' };
     }
-  }
-  booting = true;
-  initializing = true;
-  isReady = false;
-  qrDataUrl = null;
+    booting = true;
+    initializing = true;
+    isReady = false;
+    qrDataUrl = null;
 
   if (!fs.existsSync(WHATSAPP_AUTH_DIR)) fs.mkdirSync(WHATSAPP_AUTH_DIR, { recursive: true });
 
-  const wwjs = require('whatsapp-web.js');
-  const qrcode = require('qrcode');
+    const wwjs = require('whatsapp-web.js');
+    const qrcode = require('qrcode');
 
-  const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH ||
-    (process.platform === 'win32' ? 
-      (fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe') ? 
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' :
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe') : '');
+    const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH ||
+      (process.platform === 'win32' ? 
+        (fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe') ? 
+          'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' :
+          'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe') : '');
 
-  const puppeteerConfig = {
-    headless: PUPPETEER_HEADLESS,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-web-security',
-      '--disable-features=VizDisplayCompositor'
-    ],
-  };
-  if (chromePath) puppeteerConfig.executablePath = chromePath;
+    const puppeteerConfig = {
+      headless: PUPPETEER_HEADLESS,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor'
+      ],
+    };
+    if (chromePath) puppeteerConfig.executablePath = chromePath;
 
-  whatsappClient = new wwjs.Client({
-    authStrategy: new wwjs.LocalAuth({ clientId: WHATSAPP_CLIENT_ID, dataPath: WHATSAPP_AUTH_DIR }),
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    puppeteer: puppeteerConfig,
-  });
+    whatsappClient = new wwjs.Client({
+      authStrategy: new wwjs.LocalAuth({ clientId: WHATSAPP_CLIENT_ID, dataPath: WHATSAPP_AUTH_DIR }),
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      puppeteer: puppeteerConfig,
+    });
 
-  whatsappClient.on('qr', async (qr) => {
-    try {
-      qrDataUrl = await qrcode.toDataURL(qr, { margin: 2, width: 256 });
-      console.log('[wa-bridge] QR code generated — scan with WhatsApp Linked Devices');
-    } catch (e) {
-      console.error('[wa-bridge] QR encode failed', e);
+    whatsappClient.on('qr', async (qr) => {
+      try {
+        qrDataUrl = await qrcode.toDataURL(qr, { margin: 2, width: 256 });
+        console.log('[wa-bridge] QR code generated - scan with WhatsApp Linked Devices');
+      } catch (e) {
+        console.error('[wa-bridge] QR encode failed', e);
+        qrDataUrl = null;
+      }
+      isReady = false;
+      initializing = false;
+    });
+
+    whatsappClient.on('ready', () => {
+      console.log('[wa-bridge] WhatsApp client ready');
+      isReady = true;
+      initializing = false;
       qrDataUrl = null;
-    }
-    isReady = false;
-    initializing = false;
-  });
+    });
 
-  whatsappClient.on('ready', () => {
-    console.log('[wa-bridge] WhatsApp client ready');
-    isReady = true;
-    initializing = false;
-    qrDataUrl = null;
-  });
+    whatsappClient.on('auth_failure', (m) => {
+      console.error('[wa-bridge] auth_failure', m);
+      isReady = false;
+      initializing = false;
+    });
 
-  whatsappClient.on('auth_failure', (m) => {
-    console.error('[wa-bridge] auth_failure', m);
-    isReady = false;
-    initializing = false;
-  });
+    whatsappClient.on('disconnected', (r) => {
+      console.warn('[wa-bridge] disconnected', r);
+      isReady = false;
+      initializing = false;
+    });
 
-  whatsappClient.on('disconnected', (r) => {
-    console.warn('[wa-bridge] disconnected', r);
-    isReady = false;
-    initializing = false;
-  });
-
-  console.log('[wa-bridge] initializing WhatsApp client (headless=%s)', PUPPETEER_HEADLESS);
-  try {
+    console.log('[wa-bridge] initializing WhatsApp client (headless=%s)', PUPPETEER_HEADLESS);
     await whatsappClient.initialize();
-  } finally {
+    return { status: 'initialized' };
+  } catch (e) {
+    console.error('[wa-bridge] Start error:', e);
     booting = false;
     initializing = false;
+    throw e;
   }
-
-  return { status: 'initialized' };
 }
 
 function getStatus() {
