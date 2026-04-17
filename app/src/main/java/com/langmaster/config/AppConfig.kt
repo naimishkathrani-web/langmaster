@@ -3,5 +3,5 @@ package com.langmaster.config
 import com.langmaster.BuildConfig
 
 object AppConfig {
-    val apiBaseUrl: String = BuildConfig.API_BASE_URL
+    // App now runs fully offline or uses free public APIs directly
 }

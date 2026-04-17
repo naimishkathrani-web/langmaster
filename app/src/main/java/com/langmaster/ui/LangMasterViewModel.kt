@@ -16,12 +16,9 @@ import com.langmaster.data.repo.ChatRepository
 import com.langmaster.data.repo.LearningRepository
 import com.langmaster.data.repo.TranslationPolicyEvaluator
 import com.langmaster.data.service.AuthService
-import com.langmaster.data.service.BackendAuthService
 import com.langmaster.data.service.LocalDevAuthService
-import com.langmaster.data.service.LocalTranslationService
-import com.langmaster.data.service.BackendTranslationService
+import com.langmaster.data.service.GoogleTranslateService
 import com.langmaster.data.service.TranslationService
-import com.langmaster.data.service.BackendLearningService
 import com.langmaster.data.service.LearningService
 import com.langmaster.data.service.LocalLearningService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,33 +28,26 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import androidx.room.withTransaction
 
 class LangMasterViewModel(application: Application) : AndroidViewModel(application) {
     private val db = DatabaseProvider.get(application)
     private val chatRepository = ChatRepository(db)
     private val translationRepository = AgentTranslateRepository(db)
     private val learningRepository = LearningRepository(db)
-    private val authService: AuthService = if (BuildConfig.DEBUG) {
-        LocalDevAuthService()
-    } else {
-        BackendAuthService(AppConfig.apiBaseUrl)
-    }
-    private val translationService: TranslationService = if (BuildConfig.DEBUG) {
-        LocalTranslationService()
-    } else {
-        BackendTranslationService(AppConfig.apiBaseUrl)
-    }
-    private val learningService: LearningService = if (BuildConfig.DEBUG) {
-        LocalLearningService()
-    } else {
-        BackendLearningService(AppConfig.apiBaseUrl)
-    }
+    private val authService: AuthService = LocalDevAuthService(db)
+    private val translationService: TranslationService = GoogleTranslateService()
+    private val learningService: LearningService = LocalLearningService()
 
-    private val localUserPhone = "+911111111111"
+    private var localUserPhone = ""
     private val contactPhone = "+919999999999"
     private val activeConversationId = MutableStateFlow("conv-ravi")
     val isLoggedIn = MutableStateFlow(false)
     val authStatus = MutableStateFlow<String?>(null)
+
+    fun clearAuthStatus() {
+        authStatus.value = null
+    }
 
     val conversations: StateFlow<List<ConversationEntity>> = chatRepository.observeConversations().stateIn(
         scope = viewModelScope,
@@ -73,7 +63,7 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         list.firstOrNull { it.id == selectedId }?.title ?: "Conversation"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Conversation")
 
-    private val learningLanguage = MutableStateFlow("English")
+    val learningLanguage = MutableStateFlow("English")
     val learningTracks: StateFlow<List<LearningTrackEntity>> = learningLanguage.flatMapLatest {
         learningRepository.observeTracks(it)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -91,17 +81,27 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         )
 
     init {
-        viewModelScope.launch {
-            chatRepository.seedDefaultConversation(activeConversationId.value, localUserPhone, contactPhone)
-            chatRepository.seedGroupConversation(
-                conversationId = "conv-group-1",
-                localUserPhone = localUserPhone,
-                memberPhones = listOf("+918888888888", "+917777777777", "+916666666666")
-            )
-            if (messages.value.isEmpty()) {
-                chatRepository.sendTextMessage(activeConversationId.value, contactPhone, "Namaste!", "Hindi")
+        android.util.Log.d("LangMasterVM", "LangMasterViewModel initialized")
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                db.withTransaction {
+                    android.util.Log.d("LangMasterVM", "Starting DB seeding inside transaction")
+                    chatRepository.seedDefaultConversation(activeConversationId.value, localUserPhone, contactPhone)
+                    chatRepository.seedGroupConversation(
+                        conversationId = "conv-group-1",
+                        localUserPhone = localUserPhone,
+                        memberPhones = listOf("+918888888888", "+917777777777", "+916666666666")
+                    )
+                    // Check messages after seeding/fetching
+                    if (chatRepository.getMessagesSync(activeConversationId.value).isEmpty()) {
+                        chatRepository.sendTextMessage(activeConversationId.value, contactPhone, "Namaste!", "Hindi")
+                    }
+                    learningRepository.seedTracks("English")
+                    android.util.Log.d("LangMasterVM", "DB seeding completed inside transaction")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("LangMasterVM", "DB seeding failed", e)
             }
-            learningRepository.seedTracks("English")
         }
     }
 
@@ -181,7 +181,14 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun registerPin(phone: String, pin: String, confirmPin: String) {
+    fun register(
+        phone: String,
+        email: String,
+        pin: String,
+        confirmPin: String,
+        nativeLanguage: String,
+        otherLanguages: List<String>
+    ) {
         viewModelScope.launch {
             if (pin != confirmPin) {
                 authStatus.value = "PIN mismatch. Please re-enter."
@@ -191,16 +198,28 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
                 authStatus.value = "PIN must be exactly 4 digits."
                 return@launch
             }
-            val response = authService.registerPin(phone, pin)
-            authStatus.value = if (response.ok) "PIN registered. You can log in now." else (response.error ?: "Registration failed")
+            val response = authService.register(phone, email, pin, nativeLanguage, otherLanguages)
+            if (response.ok) {
+                authStatus.value = "Registration successful. Logging in..."
+                loginWithPin(phone, pin)
+            } else {
+                authStatus.value = response.error ?: "Registration failed"
+            }
         }
     }
 
     fun loginWithPin(phone: String, pin: String) {
         viewModelScope.launch {
             val result = authService.loginWithPin(phone, pin)
-            isLoggedIn.value = result.ok
-            authStatus.value = if (result.ok) "Login successful." else (result.error ?: "Invalid credentials")
+            if (result.ok) {
+                localUserPhone = phone
+                isLoggedIn.value = true
+                authStatus.value = "Login successful."
+                // Seed some initial data if needed
+                chatRepository.seedDefaultConversation(phone, "LangMaster Team", "Welcome to LangMaster!")
+            } else {
+                authStatus.value = result.error ?: "Invalid credentials"
+            }
         }
     }
 }

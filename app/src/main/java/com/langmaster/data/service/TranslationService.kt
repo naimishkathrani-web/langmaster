@@ -12,41 +12,46 @@ interface TranslationService {
     suspend fun translateText(sourceLang: String, targetLang: String, text: String): String
 }
 
-class LocalTranslationService : TranslationService {
-    override suspend fun translateText(sourceLang: String, targetLang: String, text: String): String {
-        return "[$targetLang] $text"
-    }
-}
-
-class BackendTranslationService(private val baseUrl: String) : TranslationService {
+class GoogleTranslateService : TranslationService {
     override suspend fun translateText(sourceLang: String, targetLang: String, text: String): String {
         return withContext(Dispatchers.IO) {
-            val payload = JSONObject()
-                .put("sourceLang", sourceLang)
-                .put("targetLang", targetLang)
-                .put("text", text)
-            val response = postJson("$baseUrl/translate/text", payload)
-            response.optString("translatedText").ifBlank { "[$targetLang] $text" }
+            val sourceIso = mapLangToIso(sourceLang)
+            val targetIso = mapLangToIso(targetLang)
+            
+            // translate.googleapis.com requires url encoded text
+            val encodedText = java.net.URLEncoder.encode(text, "UTF-8")
+            val urlStr = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=$sourceIso&tl=$targetIso&dt=t&q=$encodedText"
+
+            runCatching {
+                val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "Mozilla/5.0")
+                    connectTimeout = 10_000
+                    readTimeout = 10_000
+                }
+                val body = BufferedReader(connection.inputStream.reader()).use { it.readText() }
+                // Response is a weird nested JSON array: [[[ "translated text", "original text", ... ]], ...]
+                val jsonArray = org.json.JSONArray(body)
+                val sections = jsonArray.getJSONArray(0)
+                val sb = java.lang.StringBuilder()
+                for (i in 0 until sections.length()) {
+                    sb.append(sections.getJSONArray(i).getString(0))
+                }
+                sb.toString()
+            }.getOrElse { 
+                "[$targetLang] $text" // Fallback on complete failure
+            }
         }
     }
 
-    private fun postJson(url: String, payload: JSONObject): JSONObject {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            connectTimeout = 10_000
-            readTimeout = 10_000
-            doOutput = true
+    private fun mapLangToIso(lang: String): String {
+        return when (lang.lowercase()) {
+            "english" -> "en"
+            "hindi" -> "hi"
+            "gujarati" -> "gu"
+            "marathi" -> "mr"
+            "tamil" -> "ta"
+            else -> "en"
         }
-
-        OutputStreamWriter(connection.outputStream).use { writer ->
-            writer.write(payload.toString())
-            writer.flush()
-        }
-
-        val code = connection.responseCode
-        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-        val body = BufferedReader(stream.reader()).use { it.readText() }
-        return runCatching { JSONObject(body) }.getOrElse { JSONObject() }
     }
 }
