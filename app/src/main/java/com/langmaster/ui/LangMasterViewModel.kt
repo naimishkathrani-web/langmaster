@@ -81,12 +81,9 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         learningRepository.observeModules(it)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val translationSessions: StateFlow<List<TranslationSessionEntity>> =
-        translationRepository.observeSessions(localUserPhone).stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = emptyList()
-        )
+    val translationSessions: StateFlow<List<TranslationSessionEntity>> = currentUserPhone.flatMapLatest { phone ->
+        translationRepository.observeSessions(phone)
+    }.stateIn(scope = viewModelScope, started = SharingStarted.WhileSubscribed(5_000), initialValue = emptyList())
 
     init {
         android.util.Log.d("LangMasterVM", "LangMasterViewModel initialized")
