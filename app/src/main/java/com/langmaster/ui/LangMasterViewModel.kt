@@ -1,6 +1,7 @@
 package com.langmaster.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.langmaster.BuildConfig
@@ -39,6 +40,7 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
     private val authService: AuthService = LocalDevAuthService(db)
     private val translationService: TranslationService = GoogleTranslateService()
     private val learningService: LearningService = LocalLearningService()
+    private val prefs = application.getSharedPreferences("langmaster_session", Context.MODE_PRIVATE)
 
     private var localUserPhone = ""
     val currentUserPhone = MutableStateFlow<String>("")
@@ -88,19 +90,30 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
 
     init {
         android.util.Log.d("LangMasterVM", "LangMasterViewModel initialized")
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                db.withTransaction {
-                    android.util.Log.d("LangMasterVM", "Starting DB seeding inside transaction")
-                    if (localUserPhone.isNotBlank()) {
+        val savedPhone = prefs.getString("logged_in_phone", null)
+        if (!savedPhone.isNullOrBlank()) {
+            localUserPhone = savedPhone
+            currentUserPhone.value = savedPhone
+            isLoggedIn.value = true
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    authService.loginWithPin(savedPhone, "")
+                    db.withTransaction {
                         chatRepository.seedSimulatedData(localUserPhone)
                         contacts.value = db.userDao().getAllOtherUsers(localUserPhone)
                     }
                     learningRepository.seedTracks("English")
-                    android.util.Log.d("LangMasterVM", "DB seeding completed inside transaction")
+                } catch (e: Exception) {
+                    android.util.Log.e("LangMasterVM", "Auto-login seed error", e)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("LangMasterVM", "DB seeding failed", e)
+            }
+        } else {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    learningRepository.seedTracks("English")
+                } catch (e: Exception) {
+                    android.util.Log.e("LangMasterVM", "DB seeding error", e)
+                }
             }
         }
     }
@@ -246,6 +259,9 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
                 isLoggedIn.value = true
                 authStatus.value = "Login successful."
                 
+                // Save session for persistent login
+                prefs.edit().putString("logged_in_phone", phone).apply()
+                
                 // Re-seed with proper phone now that we know who logged in
                 db.withTransaction {
                     chatRepository.seedSimulatedData(localUserPhone)
@@ -255,5 +271,21 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
                 authStatus.value = result.error ?: "Invalid credentials"
             }
         }
+    }
+
+    fun sendMediaMessage(mediaUri: String, messageType: String) {
+        val convId = _activeConversationId.value ?: return
+        if (mediaUri.isBlank()) return
+        viewModelScope.launch {
+            chatRepository.sendMediaMessage(convId, localUserPhone, messageType, mediaUri)
+        }
+    }
+
+    fun logout() {
+        prefs.edit().remove("logged_in_phone").apply()
+        localUserPhone = ""
+        currentUserPhone.value = ""
+        isLoggedIn.value = false
+        _activeConversationId.value = null
     }
 }

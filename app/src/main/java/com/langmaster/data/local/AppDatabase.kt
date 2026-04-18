@@ -43,7 +43,7 @@ import com.langmaster.data.local.entity.UserEntity
         RetentionPolicyEntity::class,
         BackupStateEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -25,6 +25,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.InsertDriveFile
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowBack
@@ -848,7 +856,16 @@ private fun ConnectScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier
             }
 
             // Messages
+            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+            LaunchedEffect(messages.size) {
+                if (messages.isNotEmpty()) {
+                    listState.animateScrollToItem(messages.size - 1)
+                }
+            }
+
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .weight(1f)
                     .background(Color(0xFFECE5DD))
@@ -866,6 +883,14 @@ private fun ConnectScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier
                 }
             }
 
+            val imagePickerLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetContent()
+            ) { uri ->
+                if (uri != null) {
+                    vm.sendMediaMessage(uri.toString(), "IMAGE")
+                }
+            }
+
             // Input bar
             Surface(
                 color = Color.White,
@@ -878,6 +903,9 @@ private fun ConnectScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    IconButton(onClick = { imagePickerLauncher.launch("image/*") }) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Attach", tint = Color.Gray)
+                    }
                     TextField(
                         value = input,
                         onValueChange = { input = it },
@@ -904,7 +932,11 @@ private fun ConnectScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier
                         contentColor = Color.White,
                         modifier = Modifier.size(48.dp)
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = "Send")
+                        if (input.isNotBlank()) {
+                            Icon(Icons.Default.Send, contentDescription = "Send")
+                        } else {
+                            Icon(Icons.Default.Mic, contentDescription = "Record")
+                        }
                     }
                 }
             }
@@ -1000,12 +1032,42 @@ private fun ChatBubble(
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Text(
-                    message.body ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextBlack
-                )
-                Spacer(Modifier.height(2.dp))
+                if (message.messageType == "IMAGE" && message.mediaUri != null) {
+                    AsyncImage(
+                        model = message.mediaUri,
+                        contentDescription = "Image attachment",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(Modifier.height(4.dp))
+                } else if (message.messageType == "VOICE") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PlayCircle, contentDescription = "Play Voice", tint = PrimaryBlue, modifier = Modifier.size(32.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Voice Note", style = MaterialTheme.typography.bodyMedium, color = TextBlack)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                } else if (message.messageType == "VIDEO") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Videocam, contentDescription = "Play Video", tint = PrimaryBlue, modifier = Modifier.size(32.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Video Attachment", style = MaterialTheme.typography.bodyMedium, color = TextBlack)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+                
+                if (!message.body.isNullOrBlank()) {
+                    Text(
+                        message.body,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextBlack
+                    )
+                    Spacer(Modifier.height(2.dp))
+                }
+                
                 Text(
                     timeLabel,
                     style = MaterialTheme.typography.labelSmall,

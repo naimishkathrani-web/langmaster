@@ -84,8 +84,9 @@ data class MessageEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "conversation_id") val conversationId: String,
     @ColumnInfo(name = "sender_phone_e164") val senderPhoneE164: String,
-    @ColumnInfo(name = "message_type") val messageType: String,
+    @ColumnInfo(name = "message_type") val messageType: String, // TEXT, IMAGE, VOICE, VIDEO
     val body: String? = null,
+    @ColumnInfo(name = "media_uri") val mediaUri: String? = null,
     @ColumnInfo(name = "reply_to_message_id") val replyToMessageId: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "edited_at") val editedAt: Long? = null,

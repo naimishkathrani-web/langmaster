@@ -102,8 +102,27 @@ class ChatRepository(private val db: AppDatabase) {
                 conversationId = conversationId,
                 senderPhoneE164 = senderPhone,
                 messageType = "TEXT",
-                body = "[$language] $text",
+                body = text,
                 replyToMessageId = replyToMessageId,
+                createdAt = now
+            )
+        )
+    }
+
+    suspend fun sendMediaMessage(
+        conversationId: String,
+        senderPhone: String,
+        messageType: String,
+        mediaUri: String
+    ) {
+        val now = System.currentTimeMillis()
+        db.messageDao().upsert(
+            MessageEntity(
+                id = UUID.randomUUID().toString(),
+                conversationId = conversationId,
+                senderPhoneE164 = senderPhone,
+                messageType = messageType,
+                mediaUri = mediaUri,
                 createdAt = now
             )
         )
