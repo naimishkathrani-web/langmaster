@@ -29,17 +29,17 @@ class ChatRepository(private val db: AppDatabase) {
         // 1. Conversation with Ravi
         db.conversationDao().upsert(ConversationEntity(id = c1, type = "DIRECT", title = "Ravi Kumar", createdBy = localUserPhone, createdAt = now - 500000, updatedAt = now, lastMessageId = "msg2"))
         db.translationDao().upsertMember(ConversationMemberEntity(id = "$c1-$localUserPhone", conversationId = c1, userPhoneE164 = localUserPhone, role = "MEMBER", translationEnabled = false, preferredLanguage = "English", joinedAt = now))
-        db.translationDao().upsertMember(ConversationMemberEntity(id = "$c1-9999999999", conversationId = c1, userPhoneE164 = "9999999999", role = "MEMBER", translationEnabled = false, preferredLanguage = "Hindi", joinedAt = now))
+        db.translationDao().upsertMember(ConversationMemberEntity(id = "$c1-+919999999999", conversationId = c1, userPhoneE164 = "+919999999999", role = "MEMBER", translationEnabled = false, preferredLanguage = "Hindi", joinedAt = now))
         
         db.messageDao().upsert(MessageEntity(id = "msg1", conversationId = c1, senderPhoneE164 = localUserPhone, messageType = "TEXT", body = "Hey Ravi, are you coming to the meeting?", createdAt = now - 400000))
-        db.messageDao().upsert(MessageEntity(id = "msg2", conversationId = c1, senderPhoneE164 = "9999999999", messageType = "TEXT", body = "Haan, main raste mein hoon.", createdAt = now - 300000)) // "Yes, I am on the way"
+        db.messageDao().upsert(MessageEntity(id = "msg2", conversationId = c1, senderPhoneE164 = "+919999999999", messageType = "TEXT", body = "Haan, main raste mein hoon.", createdAt = now - 300000)) // "Yes, I am on the way"
 
         // 2. Conversation with Priya
-        db.conversationDao().upsert(ConversationEntity(id = c2, type = "DIRECT", title = "Priya Sharma", createdBy = "8888888888", createdAt = now - 200000, updatedAt = now, lastMessageId = "msg4"))
+        db.conversationDao().upsert(ConversationEntity(id = c2, type = "DIRECT", title = "Priya Sharma", createdBy = "+918888888888", createdAt = now - 200000, updatedAt = now, lastMessageId = "msg4"))
         db.translationDao().upsertMember(ConversationMemberEntity(id = "$c2-$localUserPhone", conversationId = c2, userPhoneE164 = localUserPhone, role = "MEMBER", translationEnabled = true, preferredLanguage = "English", joinedAt = now))
-        db.translationDao().upsertMember(ConversationMemberEntity(id = "$c2-8888888888", conversationId = c2, userPhoneE164 = "8888888888", role = "MEMBER", translationEnabled = false, preferredLanguage = "Gujarati", joinedAt = now))
+        db.translationDao().upsertMember(ConversationMemberEntity(id = "$c2-+918888888888", conversationId = c2, userPhoneE164 = "+918888888888", role = "MEMBER", translationEnabled = false, preferredLanguage = "Gujarati", joinedAt = now))
         
-        db.messageDao().upsert(MessageEntity(id = "msg3", conversationId = c2, senderPhoneE164 = "8888888888", messageType = "TEXT", body = "Tame kyam chho?", createdAt = now - 150000)) // "How are you?"
+        db.messageDao().upsert(MessageEntity(id = "msg3", conversationId = c2, senderPhoneE164 = "+918888888888", messageType = "TEXT", body = "Tame kyam chho?", createdAt = now - 150000)) // "How are you?"
         db.messageDao().upsert(MessageEntity(id = "msg4", conversationId = c2, senderPhoneE164 = localUserPhone, messageType = "TEXT", body = "I'm doing well, thanks! Getting ready for work.", createdAt = now - 100000))
 
         // 3. Seed AI Agent history

@@ -59,11 +59,11 @@ class LocalDevAuthService(private val db: AppDatabase) : AuthService {
 
     private suspend fun seedTestAccounts() {
         val testAccounts = listOf(
-            "7016899689" to "Naimish Kathrani",
-            "9999999999" to "Ravi Kumar",
-            "8888888888" to "Priya Sharma",
-            "7777777777" to "Amit Patel",
-            "6666666666" to "Sneha Gupta"
+            "+917016899689" to "Naimish Kathrani",
+            "+919999999999" to "Ravi Kumar",
+            "+918888888888" to "Priya Sharma",
+            "+917777777777" to "Amit Patel",
+            "+916666666666" to "Sneha Gupta"
         )
         for ((phone, name) in testAccounts) {
             if (db.userDao().getUserByPhone(phone) == null) {
