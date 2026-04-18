@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayCircle
@@ -897,6 +898,12 @@ private fun ConnectScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier
             }
 
             // Input bar
+            val cameraLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.TakePicturePreview()
+            ) { bitmap ->
+                // TODO: Save bitmap to temp file and send URI
+            }
+
             Surface(
                 color = Color.White,
                 shadowElevation = 8.dp
@@ -910,6 +917,9 @@ private fun ConnectScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier
                 ) {
                     IconButton(onClick = { imagePickerLauncher.launch("image/*") }) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Attach", tint = Color.Gray)
+                    }
+                    IconButton(onClick = { cameraLauncher.launch(null) }) {
+                        Icon(Icons.Default.PhotoCamera, contentDescription = "Camera", tint = Color.Gray)
                     }
                     TextField(
                         value = input,
@@ -1254,14 +1264,20 @@ private fun AgentTranslateScreen(vm: LangMasterViewModel, modifier: Modifier = M
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Mic button matching layout, but opening Voice input instead of recording natively for now
+                val cameraLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.TakePicturePreview()
+                ) { bitmap ->
+                    // TODO: process agent image
+                }
+
                 IconButton(onClick = {
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    }
-                    runCatching { speechLauncher.launch(intent) }
+                    // TODO: Implement Agent Attachment
                 }) {
                     Icon(Icons.Default.AttachFile, contentDescription = "Attach", tint = Color.Gray)
+                }
+
+                IconButton(onClick = { cameraLauncher.launch(null) }) {
+                    Icon(Icons.Default.PhotoCamera, contentDescription = "Camera", tint = Color.Gray)
                 }
                 
                 TextField(

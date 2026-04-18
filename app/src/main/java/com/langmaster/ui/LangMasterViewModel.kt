@@ -19,7 +19,7 @@ import com.langmaster.data.repo.LearningRepository
 import com.langmaster.data.repo.TranslationPolicyEvaluator
 import com.langmaster.data.service.AuthService
 import com.langmaster.data.service.LocalDevAuthService
-import com.langmaster.data.service.GoogleTranslateService
+import com.langmaster.data.service.MlKitTranslateService
 import com.langmaster.data.service.TranslationService
 import com.langmaster.data.service.LearningService
 import com.langmaster.data.service.LocalLearningService
@@ -38,7 +38,7 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
     private val translationRepository = AgentTranslateRepository(db)
     private val learningRepository = LearningRepository(db)
     private val authService: AuthService = LocalDevAuthService(db)
-    private val translationService: TranslationService = GoogleTranslateService()
+    private val translationService: TranslationService = MlKitTranslateService()
     private val learningService: LearningService = LocalLearningService()
     private val prefs = application.getSharedPreferences("langmaster_session", Context.MODE_PRIVATE)
 
@@ -145,7 +145,7 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             val output = translationService.translateText(source, target, input)
             translationRepository.saveTextSession(
-                userId = localUserPhone,
+                userId = currentUserPhone.value,
                 sourceLanguage = source,
                 targetLanguage = target,
                 inputText = input,

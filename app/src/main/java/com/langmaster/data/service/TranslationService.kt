@@ -8,50 +8,54 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.TranslatorOptions
+import com.google.mlkit.common.model.DownloadConditions
+import kotlinx.coroutines.tasks.await
+
 interface TranslationService {
     suspend fun translateText(sourceLang: String, targetLang: String, text: String): String
 }
 
-class GoogleTranslateService : TranslationService {
+class MlKitTranslateService : TranslationService {
     override suspend fun translateText(sourceLang: String, targetLang: String, text: String): String {
         return withContext(Dispatchers.IO) {
             val sourceIso = mapLangToIso(sourceLang)
             val targetIso = mapLangToIso(targetLang)
-            
-            // translate.googleapis.com requires url encoded text
-            val encodedText = java.net.URLEncoder.encode(text, "UTF-8")
-            val urlStr = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=$sourceIso&tl=$targetIso&dt=t&q=$encodedText"
 
-            runCatching {
-                val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    setRequestProperty("User-Agent", "Mozilla/5.0")
-                    connectTimeout = 10_000
-                    readTimeout = 10_000
-                }
-                val body = BufferedReader(connection.inputStream.reader()).use { it.readText() }
-                // Response is a weird nested JSON array: [[[ "translated text", "original text", ... ]], ...]
-                val jsonArray = org.json.JSONArray(body)
-                val sections = jsonArray.getJSONArray(0)
-                val sb = java.lang.StringBuilder()
-                for (i in 0 until sections.length()) {
-                    sb.append(sections.getJSONArray(i).getString(0))
-                }
-                sb.toString()
-            }.getOrElse { 
-                "[$targetLang] $text" // Fallback on complete failure
+            val options = TranslatorOptions.Builder()
+                .setSourceLanguage(sourceIso)
+                .setTargetLanguage(targetIso)
+                .build()
+
+            val translator = Translation.getClient(options)
+            val conditions = DownloadConditions.Builder().requireWifi().build()
+
+            try {
+                // Ensure the model is downloaded before translating
+                translator.downloadModelIfNeeded(conditions).await()
+                
+                // Perform local translation purely offline
+                val result = translator.translate(text).await()
+                result
+            } catch (e: Exception) {
+                // Fallback to the original text if models failed to download or translate
+                "[$targetLang] $text"
+            } finally {
+                translator.close()
             }
         }
     }
 
     private fun mapLangToIso(lang: String): String {
         return when (lang.lowercase()) {
-            "english" -> "en"
-            "hindi" -> "hi"
-            "gujarati" -> "gu"
-            "marathi" -> "mr"
-            "tamil" -> "ta"
-            else -> "en"
+            "english" -> TranslateLanguage.ENGLISH
+            "hindi" -> TranslateLanguage.HINDI
+            "gujarati" -> TranslateLanguage.GUJARATI
+            "marathi" -> TranslateLanguage.MARATHI
+            "tamil" -> TranslateLanguage.TAMIL
+            else -> TranslateLanguage.ENGLISH
         }
     }
 }
