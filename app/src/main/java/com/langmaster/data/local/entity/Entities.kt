@@ -11,7 +11,10 @@ data class UserEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "phone_e164") val phoneE164: String,
     @ColumnInfo(name = "display_name") val displayName: String,
+    @ColumnInfo(name = "pin") val pin: String? = null, // Added for local dev persistence
     @ColumnInfo(name = "google_account_email") val googleAccountEmail: String? = null,
+    @ColumnInfo(name = "native_language") val nativeLanguage: String? = null,
+    @ColumnInfo(name = "other_languages") val otherLanguages: String? = null, // Comma separated
     @ColumnInfo(name = "avatar_uri") val avatarUri: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long

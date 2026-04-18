@@ -17,6 +17,9 @@ interface LearningDao {
     @Query("SELECT * FROM learning_modules WHERE track_id = :trackId ORDER BY phase_order ASC")
     fun observeModules(trackId: String): Flow<List<LearningModuleEntity>>
 
+    @Query("SELECT COUNT(*) FROM learning_tracks")
+    suspend fun getTrackCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTrack(track: LearningTrackEntity)
 

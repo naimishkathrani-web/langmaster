@@ -1,5 +1,7 @@
 package com.langmaster.data.service
 
+import com.langmaster.data.local.AppDatabase
+import com.langmaster.data.local.entity.UserEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -7,38 +9,99 @@ import java.io.BufferedReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 
 interface AuthService {
-    suspend fun registerPin(phone: String, pin: String): PinAuthResponse
+    suspend fun register(
+        phone: String,
+        email: String,
+        pin: String,
+        nativeLanguage: String,
+        otherLanguages: List<String>
+    ): PinAuthResponse
     suspend fun loginWithPin(phone: String, pin: String): PinAuthResponse
 }
 
-class LocalDevAuthService : AuthService {
-    private val pinMap = mutableMapOf<String, String>()
+class LocalDevAuthService(private val db: AppDatabase) : AuthService {
 
-    override suspend fun registerPin(phone: String, pin: String): PinAuthResponse {
-        pinMap[phone] = pin
+    override suspend fun register(
+        phone: String,
+        email: String,
+        pin: String,
+        nativeLanguage: String,
+        otherLanguages: List<String>
+    ): PinAuthResponse {
+        val user = UserEntity(
+            id = UUID.randomUUID().toString(),
+            phoneE164 = phone,
+            displayName = phone,
+            pin = pin,
+            googleAccountEmail = email,
+            nativeLanguage = nativeLanguage,
+            otherLanguages = otherLanguages.joinToString(","),
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+        db.userDao().upsert(user)
         return PinAuthResponse(ok = true)
     }
 
     override suspend fun loginWithPin(phone: String, pin: String): PinAuthResponse {
-        val isValid = pinMap[phone] == pin
+        seedTestAccounts()
+        val user = db.userDao().getUserByPhone(phone)
+        val isValid = user != null && user.pin == pin
         return PinAuthResponse(
             ok = isValid,
             token = if (isValid) "local-token-$phone" else null,
-            error = if (isValid) null else "Invalid pin"
+            error = if (isValid) null else if (user == null) "User not found" else "Invalid pin"
         )
+    }
+
+    private suspend fun seedTestAccounts() {
+        val testAccounts = listOf(
+            "7016899689" to "Naimish Kathrani",
+            "9999999999" to "Ravi Kumar",
+            "8888888888" to "Priya Sharma",
+            "7777777777" to "Amit Patel",
+            "6666666666" to "Sneha Gupta"
+        )
+        for ((phone, name) in testAccounts) {
+            if (db.userDao().getUserByPhone(phone) == null) {
+                db.userDao().upsert(UserEntity(
+                    id = UUID.randomUUID().toString(),
+                    phoneE164 = phone,
+                    displayName = name,
+                    pin = "2541",
+                    googleAccountEmail = "",
+                    nativeLanguage = "English",
+                    otherLanguages = "Hindi",
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                ))
+            }
+        }
     }
 }
 
 class BackendAuthService(
     private val baseUrl: String
 ) : AuthService {
-    override suspend fun registerPin(phone: String, pin: String): PinAuthResponse {
+    override suspend fun register(
+        phone: String,
+        email: String,
+        pin: String,
+        nativeLanguage: String,
+        otherLanguages: List<String>
+    ): PinAuthResponse {
         return withContext(Dispatchers.IO) {
             val response = postJson(
-                "$baseUrl/auth/register-pin",
-                JSONObject().put("phone", phone).put("pin", pin)
+                "$baseUrl/auth/register",
+                JSONObject()
+                    .put("phone", phone)
+                    .put("email", email)
+                    .put("pin", pin)
+                    .put("nativeLanguage", nativeLanguage)
+                    .put("otherLanguages", otherLanguages.joinToString(","))
             )
             PinAuthResponse(
                 ok = response.optBoolean("ok", false),

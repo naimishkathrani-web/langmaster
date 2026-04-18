@@ -6,6 +6,9 @@ build/
 .idea/
 backend/node_modules/
 backend/dist/
+<<<<<<< ours
 node_modules/
 .env
 local.properties
+=======
+>>>>>>> theirs

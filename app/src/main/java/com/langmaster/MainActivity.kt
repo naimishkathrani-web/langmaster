@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +27,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
@@ -43,9 +48,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -130,12 +137,37 @@ val countries = listOf(
 
 private val supportedLanguages = listOf("English", "Hindi", "Gujarati", "Marathi", "Tamil")
 
+private val PrimaryBlue = Color(0xFF1565C0)
+private val SecondaryRed = Color(0xFFC62828)
+private val TextBlack = Color(0xFF1A1A2E)
+
+private val LangMasterColorScheme = lightColorScheme(
+    primary = PrimaryBlue,
+    secondary = SecondaryRed,
+    background = Color(0xFFFAFAFA),
+    surface = Color(0xFFFFFFFF),
+    onPrimary = Color.White,
+    onSecondary = Color.White,
+    onBackground = TextBlack,
+    onSurface = TextBlack,
+    surfaceVariant = Color(0xFFE3F2FD),
+    onSurfaceVariant = TextBlack
+)
+
+@Composable
+fun LangMasterTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = LangMasterColorScheme,
+        content = content
+    )
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            LangMasterTheme {
                 LangMasterApp()
             }
         }
@@ -253,8 +285,8 @@ private fun OnboardingScreen(vm: LangMasterViewModel) {
             } else {
                 RegisterContent(
                     vm = vm,
-                    onRegister = { phone, email, pin, confirmPin, native, others ->
-                        vm.register(phone, email, pin, confirmPin, native, others)
+                    onRegister = { phone, email, pin, confirmPin, firstName, lastName, native, others ->
+                        vm.register(phone, email, pin, confirmPin, firstName, lastName, native, others)
                     },
                     onNavigateToLogin = { currentScreen = Screen.LOGIN }
                 )
@@ -421,11 +453,13 @@ private fun LoginContent(
 @Composable
 private fun RegisterContent(
     vm: LangMasterViewModel,
-    onRegister: (String, String, String, String, String, List<String>) -> Unit,
+    onRegister: (String, String, String, String, String, String, String, List<String>) -> Unit,
     onNavigateToLogin: () -> Unit
 ) {
     var selectedCountry by remember { mutableStateOf(countries[0]) }
     var phone by remember { mutableStateOf("") }
+    var firstName by remember { mutableStateOf("") }
+    var lastName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
@@ -531,6 +565,24 @@ private fun RegisterContent(
             }
         }
         item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = firstName,
+                    onValueChange = { firstName = it; vm.clearAuthStatus() },
+                    label = { Text("First Name") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = lastName,
+                    onValueChange = { lastName = it; vm.clearAuthStatus() },
+                    label = { Text("Last Name") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+        item {
             OutlinedTextField(
                 value = email,
                 onValueChange = { 
@@ -581,10 +633,10 @@ private fun RegisterContent(
         item {
             Spacer(Modifier.height(16.dp))
             Button(
-                onClick = { onRegister("${selectedCountry.code}$phone", email, pin, confirmPin, nativeLanguage, otherLanguages.toList()) },
+                onClick = { onRegister("${selectedCountry.code}$phone", email, pin, confirmPin, firstName, lastName, nativeLanguage, otherLanguages.toList()) },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                enabled = phone.length == selectedCountry.numberLength && pin.isNotEmpty() && pin == confirmPin && email.contains("@")
+                enabled = phone.length == selectedCountry.numberLength && pin.isNotEmpty() && pin == confirmPin && email.contains("@") && firstName.isNotBlank() && lastName.isNotBlank()
             ) {
                 Text("Register", style = MaterialTheme.typography.titleMedium)
             }
@@ -689,135 +741,171 @@ private fun LanguageChipRow(selected: String, onSelect: (String) -> Unit) {
 @Composable
 private fun ConnectScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier) {
     val conversations by vm.conversations.collectAsStateWithLifecycle()
+    val activeConvId by vm.activeConversationId.collectAsStateWithLifecycle()
     val activeConversationTitle by vm.activeConversationTitle.collectAsStateWithLifecycle()
     val messages by vm.messages.collectAsStateWithLifecycle()
-    var input by remember { mutableStateOf("") }
-    var translationEnabled by remember { mutableStateOf(false) }
-    var preferredLanguage by remember { mutableStateOf("English") }
+    val currentUserPhone by vm.currentUserPhone.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        // Active Chat Header
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(activeConversationTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Chat + Voice + Video", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // Quick Conversation Switcher
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            conversations.take(3).forEach { conversation ->
-                val isSelected = activeConversationTitle == (conversation.title ?: conversation.id)
-                OutlinedButton(
-                    onClick = { vm.selectConversation(conversation.id) },
-                    border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else ButtonDefaults.outlinedButtonBorder
+    if (activeConvId == null) {
+        // ── CONTACT LIST VIEW ──
+        Scaffold(
+            topBar = {
+                Surface(color = PrimaryBlue, shadowElevation = 4.dp) {
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("LangMaster", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = {
+                        // Open WhatsApp invite for a sample number
+                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://api.whatsapp.com/send?phone=&text=Hey! Chat with me on LangMaster — the multilingual messaging app!"))
+                        context.startActivity(intent)
+                    },
+                    containerColor = PrimaryBlue,
+                    contentColor = Color.White
                 ) {
-                    Text(conversation.title ?: "Group", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Icon(Icons.Default.PersonAdd, contentDescription = "Invite")
+                }
+            }
+        ) { padding ->
+            if (conversations.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
+                        Spacer(Modifier.height(16.dp))
+                        Text("No conversations yet", color = Color.Gray, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Tap + to invite friends", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.padding(padding),
+                    contentPadding = PaddingValues(vertical = 4.dp)
+                ) {
+                    items(conversations, key = { it.id }) { conversation ->
+                        ConversationListItem(
+                            conversation = conversation,
+                            onClick = { vm.selectConversation(conversation.id) }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 76.dp), thickness = 0.5.dp, color = Color(0xFFE0E0E0))
+                    }
                 }
             }
         }
+    } else {
+        // ── CHAT WINDOW VIEW ──
+        var input by remember { mutableStateOf("") }
 
-        Spacer(Modifier.height(16.dp))
-
-        // Translation Controls
-        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = modifier.fillMaxSize()) {
+            // Chat top bar
+            Surface(color = PrimaryBlue, shadowElevation = 4.dp) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("AI Translation", fontWeight = FontWeight.SemiBold)
+                    IconButton(onClick = { vm.selectConversation(null) }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
-                    Switch(
-                        checked = translationEnabled,
-                        onCheckedChange = {
-                            translationEnabled = it
-                            vm.setListenerPreference(it, preferredLanguage)
-                        }
-                    )
-                }
-                if (translationEnabled) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Listening in:", style = MaterialTheme.typography.labelSmall)
-                    LanguageChipRow(
-                        selected = preferredLanguage,
-                        onSelect = {
-                            preferredLanguage = it
-                            vm.setListenerPreference(translationEnabled, preferredLanguage)
-                        }
-                    )
+                    // Avatar circle
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(50)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            activeConversationTitle.take(1).uppercase(),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(activeConversationTitle, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text("online", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
-        }
 
-        Spacer(Modifier.height(16.dp))
-
-        // Messages Area
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            reverseLayout = false
-        ) {
-            items(messages, key = { it.id }) { msg ->
-                MessageBubble(
-                    message = msg,
-                    onDeleteForEveryone = { vm.deleteForEveryone(msg) },
-                    onDeleteForMe = { vm.deleteForMe(msg.id) },
-                    onForward = { vm.forwardMessage(msg, "conv-group-1") }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Input Area
-        Surface(
-            tonalElevation = 2.dp,
-            shadowElevation = 4.dp,
-            shape = RoundedCornerShape(24.dp)
-        ) {
-            Row(
+            // Messages
+            LazyColumn(
                 modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .weight(1f)
+                    .background(Color(0xFFECE5DD))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                reverseLayout = false
             ) {
-                TextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    placeholder = { Text("Message...") },
-                    modifier = Modifier.weight(1f),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent
+                items(messages, key = { it.id }) { msg ->
+                    ChatBubble(
+                        message = msg,
+                        isMe = msg.senderPhoneE164 == currentUserPhone,
+                        onDeleteForEveryone = { vm.deleteForEveryone(msg) },
+                        onDeleteForMe = { vm.deleteForMe(msg.id) }
                     )
-                )
-                Button(
-                    onClick = {
-                        if (input.isNotBlank()) {
-                            vm.sendConnectMessage(input, preferredLanguage)
-                            input = ""
-                        }
-                    },
-                    shape = RoundedCornerShape(20.dp)
+                }
+            }
+
+            // Input bar
+            Surface(
+                color = Color.White,
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("Send")
+                    TextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        placeholder = { Text("Type a message") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(24.dp)),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFFF0F0F0),
+                            unfocusedContainerColor = Color(0xFFF0F0F0),
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    FloatingActionButton(
+                        onClick = {
+                            if (input.isNotBlank()) {
+                                vm.sendConnectMessage(input, "English")
+                                input = ""
+                            }
+                        },
+                        containerColor = PrimaryBlue,
+                        contentColor = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "Send")
+                    }
                 }
             }
         }
@@ -825,47 +913,115 @@ private fun ConnectScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun MessageBubble(
-    message: MessageEntity,
-    onDeleteForEveryone: () -> Unit,
-    onDeleteForMe: () -> Unit,
-    onForward: () -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp)) {
+private fun ConversationListItem(conversation: ConversationEntity, onClick: () -> Unit) {
+    val name = conversation.title ?: "Unknown"
+    val initials = name.split(" ").take(2).joinToString("") { it.take(1).uppercase() }
+    val avatarColors = listOf(
+        Color(0xFF1565C0), Color(0xFFC62828), Color(0xFF2E7D32),
+        Color(0xFFEF6C00), Color(0xFF6A1B9A), Color(0xFF00838F)
+    )
+    val avatarColor = avatarColors[name.hashCode().mod(avatarColors.size).let { if (it < 0) it + avatarColors.size else it }]
+    
+    val timeDiff = System.currentTimeMillis() - conversation.updatedAt
+    val timeLabel = when {
+        timeDiff < 60_000 -> "now"
+        timeDiff < 3_600_000 -> "${timeDiff / 60_000}m"
+        timeDiff < 86_400_000 -> "${timeDiff / 3_600_000}h"
+        else -> "${timeDiff / 86_400_000}d"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Avatar
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .background(avatarColor, shape = RoundedCornerShape(50)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(initials, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(message.senderPhoneE164, fontWeight = FontWeight.Bold)
-                Text("▼", modifier = Modifier.clickable { expanded = true })
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    DropdownMenuItem(text = { Text("Reply") }, onClick = { expanded = false })
-                    DropdownMenuItem(
-                        text = { Text("Forward") },
-                        onClick = {
-                            onForward()
-                            expanded = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete for me") },
-                        onClick = {
-                            onDeleteForMe()
-                            expanded = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete for everyone (24h)") },
-                        onClick = {
-                            onDeleteForEveryone()
-                            expanded = false
-                        }
-                    )
-                }
+                Text(name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(timeLabel, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
             }
-            Text(message.body ?: "")
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (conversation.type == "GROUP") "Group conversation" else "Tap to open chat",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
+
+@Composable
+private fun ChatBubble(
+    message: MessageEntity,
+    isMe: Boolean,
+    onDeleteForEveryone: () -> Unit,
+    onDeleteForMe: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val bubbleColor = if (isMe) Color(0xFFDCF8C6) else Color.White
+    val alignment = if (isMe) Arrangement.End else Arrangement.Start
+
+    val timeDiff = System.currentTimeMillis() - message.createdAt
+    val timeLabel = when {
+        timeDiff < 60_000 -> "just now"
+        timeDiff < 3_600_000 -> "${timeDiff / 60_000}m ago"
+        timeDiff < 86_400_000 -> "${timeDiff / 3_600_000}h ago"
+        else -> "${timeDiff / 86_400_000}d ago"
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = alignment
+    ) {
+        Card(
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .clickable { expanded = true },
+            colors = CardDefaults.cardColors(containerColor = bubbleColor),
+            shape = RoundedCornerShape(
+                topStart = 12.dp, topEnd = 12.dp,
+                bottomStart = if (isMe) 12.dp else 2.dp,
+                bottomEnd = if (isMe) 2.dp else 12.dp
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(
+                    message.body ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextBlack
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    timeLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.Gray,
+                    modifier = Modifier.align(Alignment.End)
+                )
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(text = { Text("Delete for me") }, onClick = { onDeleteForMe(); expanded = false })
+                DropdownMenuItem(text = { Text("Delete for everyone") }, onClick = { onDeleteForEveryone(); expanded = false })
+            }
+        }
+    }
+}
+
+// ─────────── AGENT TAB ───────────
 
 @Composable
 private fun AgentTranslateScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier) {
@@ -874,154 +1030,167 @@ private fun AgentTranslateScreen(vm: LangMasterViewModel, modifier: Modifier = M
     var source by remember { mutableStateOf("English") }
     var target by remember { mutableStateOf("Hindi") }
     var inputText by remember { mutableStateOf("") }
-    
+    var showLanguageConfig by remember { mutableStateOf(false) }
+
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(context) {
-        val textToSpeech = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                // Initialized successfully
-            }
-        }
+        val textToSpeech = TextToSpeech(context) { /* init */ }
         tts = textToSpeech
-        onDispose {
-            textToSpeech.stop()
-            textToSpeech.shutdown()
-        }
+        onDispose { textToSpeech.stop(); textToSpeech.shutdown() }
     }
 
-    val speechRecognizerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
+    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-            if (!spokenText.isNullOrBlank()) {
-                inputText = spokenText
-            }
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!spoken.isNullOrBlank()) inputText = spoken
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        // AI Header
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("AI Agent Studio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Instant cross-app translation", style = MaterialTheme.typography.bodySmall)
+    Column(modifier = modifier.fillMaxSize()) {
+        // Top bar
+        Surface(color = PrimaryBlue, shadowElevation = 4.dp) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(50)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Translate, contentDescription = null, tint = Color.White)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("AI Agent", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text("$source → $target", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                }
+                IconButton(onClick = { showLanguageConfig = !showLanguageConfig }) {
+                    Text("⚙", color = Color.White, fontSize = 20.sp)
+                }
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-
-        // Language Config
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Source Language", style = MaterialTheme.typography.labelMedium)
-                LanguageChipRow(selected = source, onSelect = { source = it })
-                
-                Spacer(Modifier.height(12.dp))
-                
-                Text("Target Language", style = MaterialTheme.typography.labelMedium)
-                LanguageChipRow(selected = target, onSelect = { target = it })
+        // Language config (collapsible)
+        if (showLanguageConfig) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD))
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Source Language", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LanguageChipRow(selected = source, onSelect = { source = it })
+                    Spacer(Modifier.height(8.dp))
+                    Text("Target Language", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LanguageChipRow(selected = target, onSelect = { target = it })
+                }
             }
         }
 
-        Spacer(Modifier.height(20.dp))
-
-        // Action Buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // Chat-style translations
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .background(Color(0xFFECE5DD))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            reverseLayout = true
         ) {
-            listOf("Image", "Voice", "Video").forEach { type ->
-                OutlinedButton(
-                    onClick = {
-                        if (type == "Voice") {
-                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            items(sessions.sortedByDescending { it.createdAt }.take(20), key = { it.id }) { session ->
+                // User message (right)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Card(
+                        modifier = Modifier.widthIn(max = 300.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFDCF8C6)),
+                        shape = RoundedCornerShape(12.dp, 12.dp, 2.dp, 12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(session.inputText.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                            Text(session.sourceLang, style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.align(Alignment.End))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                // AI response (left)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                    Card(
+                        modifier = Modifier.widthIn(max = 300.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(12.dp, 12.dp, 12.dp, 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(session.outputText.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = PrimaryBlue, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(session.targetLang, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                Text("•", color = Color.Gray)
+                                Text("🔊", modifier = Modifier.clickable {
+                                    val loc = when (session.targetLang.lowercase()) {
+                                        "hindi" -> Locale("hi", "IN")
+                                        "gujarati" -> Locale("gu", "IN")
+                                        "marathi" -> Locale("mr", "IN")
+                                        "tamil" -> Locale("ta", "IN")
+                                        else -> Locale.US
+                                    }
+                                    tts?.language = loc
+                                    tts?.speak(session.outputText.orEmpty(), TextToSpeech.QUEUE_FLUSH, null, null)
+                                })
                             }
-                            runCatching { speechRecognizerLauncher.launch(intent) }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Input bar
+        Surface(color = Color.White, shadowElevation = 8.dp) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Mic button
+                IconButton(onClick = {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    }
+                    runCatching { speechLauncher.launch(intent) }
+                }) {
+                    Text("🎤", fontSize = 20.sp)
+                }
+                TextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    placeholder = { Text("Type to translate...") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(24.dp)),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFFF0F0F0),
+                        unfocusedContainerColor = Color(0xFFF0F0F0),
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                FloatingActionButton(
+                    onClick = {
+                        if (inputText.isNotBlank()) {
+                            vm.saveTranslation(source = source, target = target, input = inputText)
+                            inputText = ""
                         }
                     },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
+                    containerColor = PrimaryBlue,
+                    contentColor = Color.White,
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Text(type, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        // Input Field
-        OutlinedTextField(
-            value = inputText,
-            onValueChange = { inputText = it },
-            placeholder = { Text("Enter text to translate via AI...") },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            trailingIcon = {
-                IconButton(onClick = {
-                    if (inputText.isNotBlank()) {
-                        vm.saveTranslation(source = source, target = target, input = inputText)
-                        inputText = ""
-                    }
-                }) {
                     Icon(Icons.Default.Send, contentDescription = "Translate")
-                }
-            }
-        )
-
-        Spacer(Modifier.height(24.dp))
-
-        // Recent Translations
-        Text("Recent History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.weight(1f)
-        ) {
-            items(sessions.take(10), key = { it.id }) { session ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(session.sourceLang, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                            Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(12.dp).padding(horizontal = 4.dp))
-                            Text(session.targetLang, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(session.inputText.orEmpty(), style = MaterialTheme.typography.bodyMedium)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text(session.outputText.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                        
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                            TextButton(onClick = { 
-                                val loc = when (session.targetLang.lowercase()) {
-                                    "english" -> Locale.US
-                                    "hindi" -> Locale("hi", "IN")
-                                    "gujarati" -> Locale("gu", "IN")
-                                    "marathi" -> Locale("mr", "IN")
-                                    "tamil" -> Locale("ta", "IN")
-                                    else -> Locale.US
-                                }
-                                tts?.language = loc
-                                tts?.speak(session.outputText.orEmpty(), TextToSpeech.QUEUE_FLUSH, null, null)
-                            }) {
-                                Text("🔊 Listen", style = MaterialTheme.typography.labelSmall)
-                            }
-                            TextButton(onClick = { shareText(context, session.outputText.orEmpty(), null) }) {
-                                Text("Share", style = MaterialTheme.typography.labelSmall)
-                            }
-                            TextButton(onClick = { shareText(context, session.outputText.orEmpty(), "com.whatsapp") }) {
-                                Text("WhatsApp", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1040,101 +1209,44 @@ private fun shareText(context: android.content.Context, text: String, packageNam
     } else {
         baseIntent
     }
-    val chooser = Intent.createChooser(targetIntent, "Share translation")
-    context.startActivity(chooser)
+    context.startActivity(Intent.createChooser(targetIntent, "Share translation"))
 }
+
+// ─────────── LEARN TAB (Coming Soon) ───────────
 
 @Composable
 private fun LearningScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier) {
-    val tracks by vm.learningTracks.collectAsStateWithLifecycle()
-    val modules by vm.learningModules.collectAsStateWithLifecycle()
-    val learningLang by vm.learningLanguage.collectAsStateWithLifecycle()
-
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        // Learning Header
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("Learning Center", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Master a new language", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        // Language Selector
-        Text("I want to learn:", style = MaterialTheme.typography.labelLarge)
-        LanguageChipRow(selected = learningLang, onSelect = { vm.setLearningLanguage(it) })
-
-        Spacer(Modifier.height(24.dp))
-
-        if (tracks.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("No tracks available for $learningLang", color = Color.Gray)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(tracks) { track ->
-                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            Text(track.description, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-                            
-                            Spacer(Modifier.height(16.dp))
-                            
-                            Text("Modules", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(8.dp))
-                            
-                            // Nested list of modules for this track
-                            modules.filter { it.trackId == track.id }.forEach { module ->
-                                LearningModuleCard(module = module, onComplete = { vm.markModuleProgress(module.id, 100) })
-                                Spacer(Modifier.height(8.dp))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LearningModuleCard(module: LearningModuleEntity, onComplete: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    Column(
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .background(PrimaryBlue, shape = RoundedCornerShape(20.dp)),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(module.phaseOrder.toString(), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(module.title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                Text(module.goal, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-            }
-            Checkbox(checked = false, onCheckedChange = { if (it) onComplete() })
+            Icon(Icons.Default.School, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
         }
+        Spacer(Modifier.height(24.dp))
+        Text("Learning Center", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = TextBlack)
+        Spacer(Modifier.height(8.dp))
+        Text("Coming Soon", style = MaterialTheme.typography.titleMedium, color = SecondaryRed, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Interactive language lessons, quizzes,\nand certification prep — all offline.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.Gray,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
 @Preview(showBackground = true)
 @Composable
 fun OnboardingPreview() {
-    MaterialTheme {
-        // Mocked preview would need a mock VM or specialized preview content
+    LangMasterTheme {
         Text("Onboarding Preview")
     }
 }
@@ -1142,7 +1254,7 @@ fun OnboardingPreview() {
 @Preview(showBackground = true)
 @Composable
 fun LanguageChipRowPreview() {
-    MaterialTheme {
+    LangMasterTheme {
         LanguageChipRow(selected = "English", onSelect = {})
     }
 }

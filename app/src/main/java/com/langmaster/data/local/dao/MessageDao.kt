@@ -27,4 +27,10 @@ interface MessageDao {
 
     @Query("UPDATE messages SET deleted_for_me = 1 WHERE id = :messageId")
     suspend fun deleteForMe(messageId: String)
+
+    @Query("SELECT * FROM messages WHERE id = :messageId")
+    suspend fun getMessage(messageId: String): MessageEntity?
+
+    @Query("SELECT * FROM messages WHERE conversation_id = :conversationId AND deleted_for_me = 0")
+    suspend fun getMessagesSync(conversationId: String): List<MessageEntity>
 }

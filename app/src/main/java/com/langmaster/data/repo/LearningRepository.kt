@@ -18,6 +18,7 @@ class LearningRepository(private val db: AppDatabase) {
     }
 
     suspend fun seedTracks(languageCode: String) {
+        if (db.learningDao().getTrackCount() > 0) return
         val trackId = "track-$languageCode-beginner"
         db.learningDao().upsertTrack(
             LearningTrackEntity(

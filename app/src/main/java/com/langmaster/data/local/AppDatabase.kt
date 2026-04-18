@@ -6,6 +6,7 @@ import com.langmaster.data.local.dao.ConversationDao
 import com.langmaster.data.local.dao.LearningDao
 import com.langmaster.data.local.dao.MessageDao
 import com.langmaster.data.local.dao.TranslationDao
+import com.langmaster.data.local.dao.UserDao
 import com.langmaster.data.local.entity.BackupStateEntity
 import com.langmaster.data.local.entity.CallSessionEntity
 import com.langmaster.data.local.entity.ContactEntity
@@ -42,10 +43,11 @@ import com.langmaster.data.local.entity.UserEntity
         RetentionPolicyEntity::class,
         BackupStateEntity::class
     ],
-    version = 1,
+    version = 8,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun userDao(): UserDao
     abstract fun conversationDao(): ConversationDao
     abstract fun messageDao(): MessageDao
     abstract fun translationDao(): TranslationDao

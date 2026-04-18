@@ -12,6 +12,9 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations ORDER BY updated_at DESC")
     fun observeConversations(): Flow<List<ConversationEntity>>
 
+    @Query("SELECT COUNT(*) FROM conversations")
+    suspend fun getConversationCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(conversation: ConversationEntity)
 }

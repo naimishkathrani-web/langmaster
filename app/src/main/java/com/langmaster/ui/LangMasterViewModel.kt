@@ -11,6 +11,7 @@ import com.langmaster.data.local.entity.LearningModuleEntity
 import com.langmaster.data.local.entity.LearningTrackEntity
 import com.langmaster.data.local.entity.MessageEntity
 import com.langmaster.data.local.entity.TranslationSessionEntity
+import com.langmaster.data.local.entity.UserEntity
 import com.langmaster.data.repo.AgentTranslateRepository
 import com.langmaster.data.repo.ChatRepository
 import com.langmaster.data.repo.LearningRepository
@@ -40,10 +41,15 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
     private val learningService: LearningService = LocalLearningService()
 
     private var localUserPhone = ""
-    private val contactPhone = "+919999999999"
-    private val activeConversationId = MutableStateFlow("conv-ravi")
+    val currentUserPhone = MutableStateFlow<String>("")
+    // Note: since the backend doesn't exist, we don't need a contactPhone constant anymore.
+    private val _activeConversationId = MutableStateFlow<String?>(null)
+    val activeConversationId: StateFlow<String?> = _activeConversationId
+
     val isLoggedIn = MutableStateFlow(false)
     val authStatus = MutableStateFlow<String?>(null)
+    
+    val contacts = MutableStateFlow<List<UserEntity>>(emptyList())
 
     fun clearAuthStatus() {
         authStatus.value = null
@@ -55,13 +61,13 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         initialValue = emptyList()
     )
 
-    val messages: StateFlow<List<MessageEntity>> = activeConversationId.flatMapLatest {
-        chatRepository.observeMessages(it)
+    val messages: StateFlow<List<MessageEntity>> = _activeConversationId.flatMapLatest { id ->
+        if (id != null) chatRepository.observeMessages(id) else kotlinx.coroutines.flow.flowOf(emptyList())
     }.stateIn(scope = viewModelScope, started = SharingStarted.WhileSubscribed(5_000), initialValue = emptyList())
 
-    val activeConversationTitle: StateFlow<String> = combine(conversations, activeConversationId) { list, selectedId ->
-        list.firstOrNull { it.id == selectedId }?.title ?: "Conversation"
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Conversation")
+    val activeConversationTitle: StateFlow<String> = combine(conversations, _activeConversationId) { list, selectedId ->
+        list.firstOrNull { it.id == selectedId }?.title ?: "Chat"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Chat")
 
     val learningLanguage = MutableStateFlow("English")
     val learningTracks: StateFlow<List<LearningTrackEntity>> = learningLanguage.flatMapLatest {
@@ -86,15 +92,9 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 db.withTransaction {
                     android.util.Log.d("LangMasterVM", "Starting DB seeding inside transaction")
-                    chatRepository.seedDefaultConversation(activeConversationId.value, localUserPhone, contactPhone)
-                    chatRepository.seedGroupConversation(
-                        conversationId = "conv-group-1",
-                        localUserPhone = localUserPhone,
-                        memberPhones = listOf("+918888888888", "+917777777777", "+916666666666")
-                    )
-                    // Check messages after seeding/fetching
-                    if (chatRepository.getMessagesSync(activeConversationId.value).isEmpty()) {
-                        chatRepository.sendTextMessage(activeConversationId.value, contactPhone, "Namaste!", "Hindi")
+                    if (localUserPhone.isNotBlank()) {
+                        chatRepository.seedSimulatedData(localUserPhone)
+                        contacts.value = db.userDao().getAllOtherUsers(localUserPhone)
                     }
                     learningRepository.seedTracks("English")
                     android.util.Log.d("LangMasterVM", "DB seeding completed inside transaction")
@@ -106,9 +106,10 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setListenerPreference(enabled: Boolean, preferredLanguage: String) {
+        val convId = _activeConversationId.value ?: return
         viewModelScope.launch {
             chatRepository.upsertMemberPreference(
-                conversationId = activeConversationId.value,
+                conversationId = convId,
                 phone = localUserPhone,
                 translationEnabled = enabled,
                 preferredLanguage = preferredLanguage
@@ -118,8 +119,9 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
 
     fun sendConnectMessage(text: String, language: String) {
         if (text.isBlank()) return
+        val currentId = _activeConversationId.value ?: return
         viewModelScope.launch {
-            chatRepository.sendTextMessage(activeConversationId.value, localUserPhone, text, language)
+            chatRepository.sendTextMessage(currentId, localUserPhone, text, language)
         }
     }
 
@@ -165,8 +167,8 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun selectConversation(conversationId: String) {
-        activeConversationId.value = conversationId
+    fun selectConversation(conversationId: String?) {
+        _activeConversationId.value = conversationId
     }
 
     fun deleteForMe(messageId: String) {
@@ -186,6 +188,8 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         email: String,
         pin: String,
         confirmPin: String,
+        firstName: String,
+        lastName: String,
         nativeLanguage: String,
         otherLanguages: List<String>
     ) {
@@ -198,12 +202,37 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
                 authStatus.value = "PIN must be exactly 4 digits."
                 return@launch
             }
-            val response = authService.register(phone, email, pin, nativeLanguage, otherLanguages)
-            if (response.ok) {
+            if (firstName.isBlank() || lastName.isBlank()) {
+                authStatus.value = "First Name and Last Name are required."
+                return@launch
+            }
+            
+            // Note: register doesn't currently take first/last directly in the old code, 
+            // but we can bypass the simple AuthService and write native DB registration here
+            // since we are fully local now.
+            try {
+                if (db.userDao().getUserByPhone(phone) != null) {
+                    authStatus.value = "User already exists."
+                    return@launch
+                }
+                
+                db.userDao().upsert(
+                    UserEntity(
+                        id = java.util.UUID.randomUUID().toString(),
+                        phoneE164 = phone,
+                        displayName = "$firstName $lastName",
+                        pin = pin,
+                        googleAccountEmail = email,
+                        nativeLanguage = nativeLanguage,
+                        otherLanguages = otherLanguages.joinToString(","),
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
                 authStatus.value = "Registration successful. Logging in..."
                 loginWithPin(phone, pin)
-            } else {
-                authStatus.value = response.error ?: "Registration failed"
+            } catch (e: Exception) {
+                authStatus.value = "Database error: ${e.message}"
             }
         }
     }
@@ -213,10 +242,15 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
             val result = authService.loginWithPin(phone, pin)
             if (result.ok) {
                 localUserPhone = phone
+                currentUserPhone.value = phone
                 isLoggedIn.value = true
                 authStatus.value = "Login successful."
-                // Seed some initial data if needed
-                chatRepository.seedDefaultConversation(phone, "LangMaster Team", "Welcome to LangMaster!")
+                
+                // Re-seed with proper phone now that we know who logged in
+                db.withTransaction {
+                    chatRepository.seedSimulatedData(localUserPhone)
+                    contacts.value = db.userDao().getAllOtherUsers(localUserPhone)
+                }
             } else {
                 authStatus.value = result.error ?: "Invalid credentials"
             }
