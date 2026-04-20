@@ -1104,8 +1104,10 @@ private fun ChatBubble(
 private fun AgentTranslateScreen(vm: LangMasterViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val sessions by vm.translationSessions.collectAsStateWithLifecycle()
-    var source by remember { mutableStateOf("English") }
-    var target by remember { mutableStateOf("Hindi") }
+    
+    val source by vm.agentSourceLang.collectAsStateWithLifecycle()
+    val target by vm.agentTargetLang.collectAsStateWithLifecycle()
+    
     var inputText by remember { mutableStateOf("") }
     var showLanguageConfig by remember { mutableStateOf(false) }
 
@@ -1160,10 +1162,10 @@ private fun AgentTranslateScreen(vm: LangMasterViewModel, modifier: Modifier = M
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("Source Language", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    LanguageChipRow(selected = source, onSelect = { source = it })
+                    LanguageChipRow(selected = source, onSelect = { vm.agentSourceLang.value = it })
                     Spacer(Modifier.height(8.dp))
                     Text("Target Language", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    LanguageChipRow(selected = target, onSelect = { target = it })
+                    LanguageChipRow(selected = target, onSelect = { vm.agentTargetLang.value = it })
                 }
             }
         }
@@ -1301,6 +1303,11 @@ private fun AgentTranslateScreen(vm: LangMasterViewModel, modifier: Modifier = M
                         if (inputText.isNotBlank()) {
                             vm.saveTranslation(source = source, target = target, input = inputText)
                             inputText = ""
+                        } else {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            }
+                            runCatching { speechLauncher.launch(intent) }
                         }
                     },
                     containerColor = PrimaryBlue,
@@ -1308,7 +1315,7 @@ private fun AgentTranslateScreen(vm: LangMasterViewModel, modifier: Modifier = M
                     modifier = Modifier.size(48.dp)
                 ) {
                     if (inputText.isNotBlank()) {
-                        Icon(Icons.Default.Send, contentDescription = "Translate")
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Translate")
                     } else {
                         Icon(Icons.Default.Mic, contentDescription = "Record")
                     }

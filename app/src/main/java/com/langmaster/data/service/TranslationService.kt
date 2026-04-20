@@ -34,13 +34,23 @@ class MlKitTranslateService : TranslationService {
 
             try {
                 // Ensure the model is downloaded before translating
-                translator.downloadModelIfNeeded(conditions).await()
+                val dlTask = kotlinx.coroutines.withTimeoutOrNull(10000) {
+                    translator.downloadModelIfNeeded(conditions).await()
+                }
                 
+                if (dlTask == null) {
+                    android.util.Log.e("MlKit", "Translation model download timed out")
+                }
+
                 // Perform local translation purely offline
-                val result = translator.translate(text).await()
-                result
+                val result = kotlinx.coroutines.withTimeoutOrNull(5000) {
+                    translator.translate(text).await()
+                }
+                
+                result ?: "[$targetLang] $text (Timeout)"
             } catch (e: Exception) {
                 // Fallback to the original text if models failed to download or translate
+                android.util.Log.e("MlKit", "Translation error", e)
                 "[$targetLang] $text"
             } finally {
                 translator.close()

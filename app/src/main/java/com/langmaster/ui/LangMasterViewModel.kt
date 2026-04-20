@@ -71,6 +71,9 @@ class LangMasterViewModel(application: Application) : AndroidViewModel(applicati
         list.firstOrNull { it.id == selectedId }?.title ?: "Chat"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Chat")
 
+    val agentSourceLang = MutableStateFlow("English")
+    val agentTargetLang = MutableStateFlow("Hindi")
+
     val learningLanguage = MutableStateFlow("English")
     val learningTracks: StateFlow<List<LearningTrackEntity>> = learningLanguage.flatMapLatest {
         learningRepository.observeTracks(it)
